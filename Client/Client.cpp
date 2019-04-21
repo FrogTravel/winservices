@@ -94,8 +94,6 @@ int start_client(int argc, char **argv, const char* command) {
 		return 1;
 	}
 
-	printf("Bytes Sent: %ld\n", iResult);
-
 	// shutdown the connection since no more data will be sent
 	iResult = shutdown(ConnectSocket, SD_SEND);
 	if (iResult == SOCKET_ERROR) {
@@ -110,12 +108,11 @@ int start_client(int argc, char **argv, const char* command) {
 
 		iResult = recv(ConnectSocket, recvbuf, recvbuflen, 0);
 		if (iResult > 0) {
-			printf("Bytes received: %d\n", iResult);
 			recvbuf[iResult - 1] = 0;
-			printf("RECEIVED: %s\n", recvbuf);
+			printf("%s\n", recvbuf);
 		}
 		else if (iResult == 0)
-			printf("Connection closed\n");
+			printf("\n");
 		else
 			printf("recv failed with error: %d\n", WSAGetLastError());
 
@@ -130,16 +127,18 @@ int start_client(int argc, char **argv, const char* command) {
 
 int __cdecl main(int argc, char **argv)
 {
-	
-	std::string line;
-	getline(std::cin, line);
-	const char* command = line.c_str();
 
-	int result = start_client(argc, argv, command);
-	if (result == 1) {
-		return 1;
+	while (true) {
+
+		std::string line;
+		getline(std::cin, line);
+		const char* command = line.c_str();
+		int result = start_client(argc, argv, command);
+		if (result == 1) {
+			return 1;
+		}
 	}
-	
+
 	while (true);
 
 	return 0;

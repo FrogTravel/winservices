@@ -20,8 +20,7 @@ using namespace std;
 
 string runCommand(char* command);
 
-int __cdecl main(void)
-{
+int startServer() {
 	WSADATA wsaData;
 	int iResult;
 
@@ -144,6 +143,13 @@ int __cdecl main(void)
 	closesocket(ClientSocket);
 	WSACleanup();
 
+}
+
+int __cdecl main(void)
+{
+	while (true) {
+		startServer();
+	}
 	return 0;
 }
 
@@ -159,18 +165,18 @@ string runCommand(char* command)
 	string pipeInfo = "";
 	string result = command + pipeInfo;
 
-	
+
 
 	char fullcommand[DEFAULT_BUFLEN];
 	strncpy_s(fullcommand, result.c_str(), sizeof(fullcommand));
 	fullcommand[sizeof(fullcommand) - 1] = 0;
 
 
-	if ((pPipe = _popen( fullcommand, "rt")) == NULL)
+	if ((pPipe = _popen(fullcommand, "rt")) == NULL)
 		exit(1);
 
 	/* Read pipe until end of file, or an error occurs. */
-	string res = ""; 
+	string res = "";
 	while (fgets(psBuffer, 128, pPipe))
 	{
 		res += psBuffer;
