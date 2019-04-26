@@ -1,3 +1,5 @@
-﻿  Server.cpp
-c:\users\ekaterina\source\repos\homework\winservices\server\server.cpp(146): warning C4715: 'startServer': not all control paths return a value
+﻿  SVC.cpp
+  Server.cpp
+  Generating Code...
+c:\users\ekaterina\source\repos\homework\winservices\server\server.cpp(188): warning C4715: 'Server::startServer': not all control paths return a value
   Server.vcxproj -> C:\Users\ekaterina\source\repos\HomeWork\winservices\Debug\Server.exe

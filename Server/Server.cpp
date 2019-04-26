@@ -2,25 +2,67 @@
 
 #define WIN32_LEAN_AND_MEAN
 
-#include <windows.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <stdlib.h>
-#include <stdio.h>
-
-#include <iostream>
+#include "Server.h"
+#include "SVC.h"
 using namespace std;
 
 // Need to link with Ws2_32.lib
 #pragma comment (lib, "Ws2_32.lib")
 // #pragma comment (lib, "Mswsock.lib")
 
-#define DEFAULT_BUFLEN 512
-#define DEFAULT_PORT "27015"
 
-string runCommand(char* command);
+Server::Server() {
+}
 
-int startServer() {
+string runCommand(char* command)
+{
+	char   psBuffer[128];
+	FILE   *pPipe;
+
+	/* Run DIR so that it writes its output to a pipe. Open this
+	 * pipe with read text attribute so that we can read it
+	 * like a text file.
+	 */
+	string pipeInfo = "";
+	string result = command + pipeInfo;
+
+
+
+	char fullcommand[DEFAULT_BUFLEN];
+	strncpy_s(fullcommand, result.c_str(), sizeof(fullcommand));
+	fullcommand[sizeof(fullcommand) - 1] = 0;
+
+
+	if ((pPipe = _popen(fullcommand, "rt")) == NULL)
+		exit(1);
+
+	/* Read pipe until end of file, or an error occurs. */
+	string res = "";
+	while (fgets(psBuffer, 128, pPipe))
+	{
+		res += psBuffer;
+	}
+
+	//char fullret[1024];
+	//strncpy_s(fullret, res.c_str(), sizeof(fullret));
+	//fullret[sizeof(fullret) - 1] = 0;
+	//printf("FULLRET: %s\n", fullret);
+	res += "\0";
+	return res;
+
+	/* Close pipe and print return value of pPipe. */
+	if (feof(pPipe))
+	{
+		printf("\nProcess returned %d\n", _pclose(pPipe));
+	}
+	else
+	{
+		printf("Error: Failed to read the pipe to the end.\n");
+	}
+
+}
+
+int Server::startServer() {
 	WSADATA wsaData;
 	int iResult;
 
@@ -145,58 +187,8 @@ int startServer() {
 
 }
 
-int __cdecl main(void)
-{
-	while (true) {
-		startServer();
-	}
+int main() {
+	_ttmain(0, NULL);//Now only as a service
+
 	return 0;
-}
-
-string runCommand(char* command)
-{
-	char   psBuffer[128];
-	FILE   *pPipe;
-
-	/* Run DIR so that it writes its output to a pipe. Open this
-	 * pipe with read text attribute so that we can read it
-	 * like a text file.
-	 */
-	string pipeInfo = "";
-	string result = command + pipeInfo;
-
-
-
-	char fullcommand[DEFAULT_BUFLEN];
-	strncpy_s(fullcommand, result.c_str(), sizeof(fullcommand));
-	fullcommand[sizeof(fullcommand) - 1] = 0;
-
-
-	if ((pPipe = _popen(fullcommand, "rt")) == NULL)
-		exit(1);
-
-	/* Read pipe until end of file, or an error occurs. */
-	string res = "";
-	while (fgets(psBuffer, 128, pPipe))
-	{
-		res += psBuffer;
-	}
-
-	//char fullret[1024];
-	//strncpy_s(fullret, res.c_str(), sizeof(fullret));
-	//fullret[sizeof(fullret) - 1] = 0;
-	//printf("FULLRET: %s\n", fullret);
-	res += "\0";
-	return res;
-
-	/* Close pipe and print return value of pPipe. */
-	if (feof(pPipe))
-	{
-		printf("\nProcess returned %d\n", _pclose(pPipe));
-	}
-	else
-	{
-		printf("Error: Failed to read the pipe to the end.\n");
-	}
-
 }

@@ -1,2 +1,4 @@
-﻿  HomeWorkServices.cpp
-  HomeWorkServices.vcxproj -> C:\Users\ekaterina\source\repos\HomeWorkServices\Debug\HomeWorkServices.exe
+﻿  pch.cpp
+  HomeWorkServices.cpp
+  LINK : C:\Users\ekaterina\source\repos\HomeWork\winservices\Debug\HomeWorkServices.exe not found or not built by the last incremental link; performing full link
+  HomeWorkServices.vcxproj -> C:\Users\ekaterina\source\repos\HomeWork\winservices\Debug\HomeWorkServices.exe
