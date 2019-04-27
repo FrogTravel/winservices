@@ -1,5 +1,5 @@
-﻿  SVC.cpp
-  Server.cpp
-  Generating Code...
-c:\users\ekaterina\source\repos\homework\winservices\server\server.cpp(188): warning C4715: 'Server::startServer': not all control paths return a value
+﻿  Server.cpp
+c:\users\ekaterina\source\repos\homework\winservices\server\server.cpp(235): warning C4101: 'lThread': unreferenced local variable
+c:\users\ekaterina\source\repos\homework\winservices\server\server.cpp(236): warning C4101: 'ThreadId2': unreferenced local variable
+c:\users\ekaterina\source\repos\homework\winservices\server\server.cpp(214): warning C4715: 'Server::startServer': not all control paths return a value
   Server.vcxproj -> C:\Users\ekaterina\source\repos\HomeWork\winservices\Debug\Server.exe
