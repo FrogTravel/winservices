@@ -17,17 +17,19 @@
 #define DEFAULT_BUFLEN 512
 #define DEFAULT_PORT "27015"
 
+WSADATA wsaData;
+SOCKET ConnectSocket = INVALID_SOCKET;
+struct addrinfo *result = NULL,
+	*ptr = NULL,
+	hints;
+const char *sendbuf = "dir";
+char recvbuf[DEFAULT_BUFLEN+1];
+int iResult;
+int recvbuflen = DEFAULT_BUFLEN;
 
-int start_client(int argc, char **argv, const char* command) {
-	WSADATA wsaData;
-	SOCKET ConnectSocket = INVALID_SOCKET;
-	struct addrinfo *result = NULL,
-		*ptr = NULL,
-		hints;
-	const char *sendbuf = "dir";
-	char recvbuf[DEFAULT_BUFLEN];
-	int iResult;
-	int recvbuflen = DEFAULT_BUFLEN;
+
+int start_client(int argc, char **argv) {
+	
 
 	// Validate the parameters
 	if (argc != 2) {
@@ -85,15 +87,54 @@ int start_client(int argc, char **argv, const char* command) {
 		return 1;
 	}
 
-	// Send an initial buffer
-	iResult = send(ConnectSocket, command, (int)strlen(command), 0);
-	if (iResult == SOCKET_ERROR) {
-		printf("send failed with error: %d\n", WSAGetLastError());
-		closesocket(ConnectSocket);
-		WSACleanup();
-		return 1;
-	}
+	return 0;
+}
 
+DWORD WINAPI sendData(LPVOID lpvThreadParam) {
+
+	while (true) {
+		std::string line;
+		std::cin >> line;
+		const char* command = line.c_str();
+		// Send an initial buffer
+		iResult = send(ConnectSocket, command, (int)strlen(command), 0);
+		if (iResult == SOCKET_ERROR) {
+			printf("send failed with error: %d\n", WSAGetLastError());
+			closesocket(ConnectSocket);
+			WSACleanup();
+			return 1;
+		}
+	}
+}
+
+
+DWORD WINAPI receiveData(LPVOID lpvThreadParam) {
+	// Receive until the peer closes the connection
+	while (true) {
+		iResult = recv(ConnectSocket, recvbuf, recvbuflen, 0);
+		if (iResult > 0) {
+			recvbuf[iResult] = 0;
+			printf("%s", recvbuf);
+
+			//std::string line;
+			//getline(std::cin, line);
+
+
+			//const char* command = line.c_str();
+
+			//sendData(command);
+			iResult = 0;
+		}
+		else if (iResult == 0)
+			printf("iResult == 0\n");
+		else
+			printf("recv failed with error: %d\n", WSAGetLastError());
+
+
+	}
+}
+
+int closeSocket() {
 	// shutdown the connection since no more data will be sent
 	iResult = shutdown(ConnectSocket, SD_SEND);
 	if (iResult == SOCKET_ERROR) {
@@ -103,43 +144,24 @@ int start_client(int argc, char **argv, const char* command) {
 		return 1;
 	}
 
-	// Receive until the peer closes the connection
-	do {
+}
 
-		iResult = recv(ConnectSocket, recvbuf, recvbuflen, 0);
-		if (iResult > 0) {
-			recvbuf[iResult - 1] = 0;
-			printf("%s\n", recvbuf);
-		}
-		else if (iResult == 0)
-			printf("\n");
-		else
-			printf("recv failed with error: %d\n", WSAGetLastError());
-
-	} while (iResult > 0);
-
+int closeClient() {
 	// cleanup
 	closesocket(ConnectSocket);
 	WSACleanup();
-
 	return 0;
 }
 
 int __cdecl main(int argc, char **argv)
 {
+	start_client(argc, argv);
+	HANDLE sThread, rThread;
 
-	while (true) {
+	sThread = CreateThread(NULL, 0, sendData, NULL, 0, NULL);
+	rThread	= CreateThread(NULL, 0, receiveData, NULL, 0, NULL);
 
-		std::string line;
-		getline(std::cin, line);
-		const char* command = line.c_str();
-		int result = start_client(argc, argv, command);
-		if (result == 1) {
-			return 1;
-		}
-	}
-
-	while (true);
-
+	WaitForSingleObject(sThread, INFINITE);
+	WaitForSingleObject(rThread, INFINITE);
 	return 0;
 }

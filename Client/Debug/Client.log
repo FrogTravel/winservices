@@ -1,1 +1,3 @@
-﻿
+﻿  Client.cpp
+c:\users\ekaterina\source\repos\homework\winservices\client\client.cpp(147): warning C4715: 'closeSocket': not all control paths return a value
+  Client.vcxproj -> C:\Users\ekaterina\source\repos\HomeWork\winservices\Debug\Client.exe

